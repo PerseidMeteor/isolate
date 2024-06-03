@@ -31,99 +31,195 @@ cg_makepath(char *buf, size_t len, const char *attr)
   assert((size_t) out < len);
 }
 
-static int
-cg_read(const char *attr, char *buf)
-{
-  int result = 0;
-  int maybe = 0;
-  if (attr[0] == '?')
-    {
-      attr++;
-      maybe = 1;
+// static int
+// cg_read(const char *attr, char *buf)
+// {
+//   int result = 0;
+//   int maybe = 0;
+//   if (attr[0] == '?')
+//     {
+//       attr++;
+//       maybe = 1;
+//     }
+
+//   char path[256];
+//   cg_makepath(path, sizeof(path), attr);
+
+//   int fd = open(path, O_RDONLY);
+//   if (fd < 0)
+//     {
+//       if (maybe)
+// 	goto fail;
+//       die("Cannot read %s: %m", path);
+//     }
+
+//   int n = read(fd, buf, CG_BUFSIZE);
+//   if (n < 0)
+//     {
+//       if (maybe)
+// 	goto fail_close;
+//       die("Cannot read %s: %m", path);
+//     }
+//   if (n >= CG_BUFSIZE - 1)
+//     die("Attribute %s too long", path);
+//   if (n > 0 && buf[n-1] == '\n')
+//     n--;
+//   buf[n] = 0;
+
+//   if (verbose > 1)
+//     msg("CG: Read %s = <%s>\n", attr, buf);
+
+//   result = 1;
+// fail_close:
+//   close(fd);
+// fail:
+//   return result;
+// }
+
+static int cg_read(const char *attr, char *buf) {
+    int result = 0;
+    int maybe = 0;
+    if (attr[0] == '?') {
+        attr++;
+        maybe = 1;
     }
 
-  char path[256];
-  cg_makepath(path, sizeof(path), attr);
+    char path[256];
+    cg_makepath(path, sizeof(path), attr);
 
-  int fd = open(path, O_RDONLY);
-  if (fd < 0)
-    {
-      if (maybe)
-	goto fail;
-      die("Cannot read %s: %m", path);
+    int fd = open(path, O_RDONLY);
+    if (fd < 0) {
+        if (maybe)
+            return 0;  // 或者返回特定的错误码
+        die("Cannot read %s: %m", path);
+        return -1;  // 错误返回
     }
 
-  int n = read(fd, buf, CG_BUFSIZE);
-  if (n < 0)
-    {
-      if (maybe)
-	goto fail_close;
-      die("Cannot read %s: %m", path);
+    int n = read(fd, buf, CG_BUFSIZE);
+    if (n < 0) {
+        close(fd);
+        if (maybe)
+            return 0;  // 或者返回特定的错误码
+        die("Cannot read %s: %m", path);
+        return -1;  // 错误返回
     }
-  if (n >= CG_BUFSIZE - 1)
-    die("Attribute %s too long", path);
-  if (n > 0 && buf[n-1] == '\n')
-    n--;
-  buf[n] = 0;
+    if (n >= CG_BUFSIZE - 1) {
+        close(fd);
+        die("Attribute %s too long", path);
+        return -1;  // 错误返回
+    }
+    if (n > 0 && buf[n-1] == '\n')
+        n--;
+    buf[n] = '\0';
 
-  if (verbose > 1)
-    msg("CG: Read %s = <%s>\n", attr, buf);
+    if (verbose > 1)
+        msg("CG: Read %s = <%s>\n", attr, buf);
 
-  result = 1;
-fail_close:
-  close(fd);
-fail:
-  return result;
+    close(fd);
+    return 1;  // 成功返回
 }
 
-static void __attribute__((format(printf,2,3)))
-cg_write(const char *attr, const char *fmt, ...)
-{
-  int maybe = 0;
-  if (attr[0] == '?')
-    {
-      attr++;
-      maybe = 1;
-    }
+//static void __attribute__((format(printf,2,3)))
+// cg_write(const char *attr, const char *fmt, ...)
+// {
+//   int maybe = 0;
+//   if (attr[0] == '?')
+//     {
+//       attr++;
+//       maybe = 1;
+//     }
+
+//   va_list args;
+//   va_start(args, fmt);
+
+//   char buf[CG_BUFSIZE];
+//   int n = vsnprintf(buf, sizeof(buf), fmt, args);
+//   if (n >= CG_BUFSIZE)
+//     die("cg_write: Value for attribute %s is too long", attr);
+
+//   if (verbose > 1)
+//     msg("CG: Write %s = %s", attr, buf);
+
+//   char path[256];
+//   cg_makepath(path, sizeof(path), attr);
+
+//   int fd = open(path, O_WRONLY | O_TRUNC);
+//   if (fd < 0)
+//     {
+//       if (maybe)
+// 	goto fail;
+//       else
+// 	die("Cannot write %s: %m", path);
+//     }
+
+//   int written = write(fd, buf, n);
+//   if (written < 0)
+//     {
+//       if (maybe)
+// 	goto fail_close;
+//       else
+// 	die("Cannot set %s to %s: %m", path, buf);
+//     }
+//   if (written != n)
+//     die("Short write to %s (%d out of %d bytes)", path, written, n);
+
+// fail_close:
+//   close(fd);
+// fail:
+//   va_end(args);
+// }
+
+static int cg_write(const char* attr, const char* fmt, ...) {
+  bool maybe = false;
+  if (attr[0] == '?') {
+    attr++;
+    maybe = true;
+  }
 
   va_list args;
   va_start(args, fmt);
 
   char buf[CG_BUFSIZE];
   int n = vsnprintf(buf, sizeof(buf), fmt, args);
-  if (n >= CG_BUFSIZE)
-    die("cg_write: Value for attribute %s is too long", attr);
+  if (n >= CG_BUFSIZE) {
+    va_end(args);
+    return -1; // Buffer overflow
+  }
 
   if (verbose > 1)
     msg("CG: Write %s = %s", attr, buf);
 
   char path[256];
-  cg_makepath(path, sizeof(path), attr);
+  // 假设cg_makepath正确填充了path
+  // cg_makepath(path, sizeof(path), attr);
 
   int fd = open(path, O_WRONLY | O_TRUNC);
-  if (fd < 0)
-    {
-      if (maybe)
-	goto fail;
-      else
-	die("Cannot write %s: %m", path);
-    }
+  if (fd < 0) {
+    va_end(args);
+    if (maybe)
+      return -2; // File open error, maybe mode
+    else
+      return -3; // File open error, fatal
+  }
 
   int written = write(fd, buf, n);
-  if (written < 0)
-    {
-      if (maybe)
-	goto fail_close;
-      else
-	die("Cannot set %s to %s: %m", path, buf);
-    }
-  if (written != n)
-    die("Short write to %s (%d out of %d bytes)", path, written, n);
+  if (written < 0) {
+    close(fd);
+    va_end(args);
+    if (maybe)
+      return -4; // Write error, maybe mode
+    else
+      return -5; // Write error, fatal
+  }
+  if (written != n) {
+    close(fd);
+    va_end(args);
+    return -6; // Short write error
+  }
 
-fail_close:
   close(fd);
-fail:
   va_end(args);
+  return 0; // Success
 }
 
 static FILE *cg_fopen(const char *attr)

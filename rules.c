@@ -38,7 +38,7 @@ static struct env_rule default_env_rules[] = {
 int
 set_env_action(char *a0)
 {
-  struct env_rule *r = xmalloc(sizeof(*r) + strlen(a0) + 1);
+  struct env_rule *r = static_cast<struct env_rule*>(xmalloc(sizeof(*r) + strlen(a0) + 1));
   char *a = (char *)(r+1);
   strcpy(a, a0);
 
@@ -82,25 +82,25 @@ apply_env_rule(char **env, int *env_sizep, struct env_rule *r)
     }
 
   // What is the new value?
-  char *new;
+  char *new_env;
   if (r->val)
     {
       if (!r->val[0])
 	return;
-      new = xmalloc(r->var_len + 1 + strlen(r->val) + 1);
-      sprintf(new, "%s=%s", r->var, r->val);
+      new_env = static_cast<char*>(xmalloc(r->var_len + 1 + strlen(r->val) + 1));
+      sprintf(new_env, "%s=%s", r->var, r->val);
     }
   else
     {
       pos = 0;
       while (environ[pos] && !match_env_var(environ[pos], r))
 	pos++;
-      if (!(new = environ[pos]))
+      if (!(new_env = environ[pos]))
 	return;
     }
 
   // Add it at the end of the array
-  env[(*env_sizep)++] = new;
+  env[(*env_sizep)++] = new_env;
   env[*env_sizep] = NULL;
 }
 
@@ -129,7 +129,7 @@ setup_environment(void)
     }
 
   // Create a new environment
-  char **env = xmalloc((orig_size + num_rules + 1) * sizeof(char *));
+  char **env = static_cast<char**>(xmalloc((orig_size + num_rules + 1) * sizeof(char *)));
   int size;
   if (pass_environ)
     {
@@ -224,7 +224,7 @@ add_dir_rule(char *in, char *out, unsigned int flags)
   // Add a new rule
   if (!r)
     {
-      r = xmalloc(sizeof(*r));
+      r = static_cast<dir_rule*>(xmalloc(sizeof(*r)));
       r->inside = in;
       *last_dir_rule = r;
       last_dir_rule = &r->next;
@@ -301,7 +301,7 @@ set_dir_action_ext(char *arg, unsigned int ext_flags)
     }
   else
     {
-      char *out = xmalloc(1 + strlen(arg) + 1);
+      char *out = static_cast<char*>(xmalloc(1 + strlen(arg) + 1));
       sprintf(out, "/%s", arg);
       return add_dir_rule(arg, out, flags);
     }

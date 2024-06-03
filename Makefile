@@ -1,14 +1,10 @@
-# Makefile for Isolate
-# (c) 2015--2024 Martin Mares <mj@ucw.cz>
-# (c) 2017 Bernard Blackham <bernard@blackham.com.au>
-
 all: isolate isolate.1 isolate.1.html isolate-check-environment isolate-cg-keeper
 
-CC=gcc
-CFLAGS=-std=gnu99 -Wall -Wextra -Wno-parentheses -Wno-unused-result -Wno-missing-field-initializers -Wstrict-prototypes -Wmissing-prototypes -D_GNU_SOURCE
-LIBS=-lcap
+CC=g++
+CFLAGS=-Wall -Wextra -Wno-parentheses -Wno-unused-result -Wno-missing-field-initializers -D_GNU_SOURCE
+LIBS=-lcap -lcurl
 
-VERSION=2.0
+VERSION=1.0
 YEAR=2024
 BUILD_DATE:=$(shell date '+%Y-%m-%d')
 BUILD_COMMIT:=$(shell if git rev-parse >/dev/null 2>/dev/null ; then git describe --always --tags ; else echo '<unknown>' ; fi)
@@ -28,13 +24,16 @@ BOXDIR = $(VARPREFIX)/lib/isolate
 SYSTEMD_CFLAGS := $(shell pkg-config libsystemd --cflags)
 SYSTEMD_LIBS := $(shell pkg-config libsystemd --libs)
 
-isolate: isolate.o util.o rules.o cg.o config.o
+isolate: isolate.o util.o rules.o cg.o config.o pull.o
 	$(CC) $(LDFLAGS) -o $@ $^ $(LIBS)
 
 isolate-cg-keeper: isolate-cg-keeper.o config.o util.o
 	$(CC) $(LDFLAGS) -o $@ $^ $(SYSTEMD_LIBS)
 
-%.o: %.c isolate.h
+%.o: %.c %.cc isolate.h
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+pull.o: image/pull.cc
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 isolate.o: CFLAGS += -DVERSION='"$(VERSION)"' -DYEAR='"$(YEAR)"' -DBUILD_DATE='"$(BUILD_DATE)"' -DBUILD_COMMIT='"$(BUILD_COMMIT)"'

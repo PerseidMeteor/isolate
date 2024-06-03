@@ -8,6 +8,7 @@
 #include "isolate.h"
 
 #include <assert.h>
+#include <bits/getopt_core.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <getopt.h>
@@ -29,6 +30,8 @@
 #include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
+
+#include "image/pull.h"
 
 /* May not be defined in older glibc headers */
 #ifndef MS_PRIVATE
@@ -331,7 +334,7 @@ flush_line(void)
 
 /* Report an error of the sandbox itself */
 void NONRET __attribute__((format(printf,1,2)))
-die(char *msg, ...)
+die(const char *msg, ...)
 {
   va_list args;
   va_start(args, msg);
@@ -368,7 +371,7 @@ die(char *msg, ...)
 
 /* Report an error of the program inside the sandbox */
 void NONRET __attribute__((format(printf,1,2)))
-err(char *msg, ...)
+err(const char *msg, ...)
 {
   va_list args;
   va_start(args, msg);
@@ -391,7 +394,7 @@ err(char *msg, ...)
 
 /* Write a message, but only if in verbose mode */
 void __attribute__((format(printf,1,2)))
-msg(char *msg, ...)
+msg(const char *msg, ...)
 {
   va_list args;
   va_start(args, msg);
@@ -421,19 +424,19 @@ struct signal_rule {
 };
 
 static const struct signal_rule signal_rules[] = {
-  { SIGHUP,	SIGNAL_INTERRUPT },
-  { SIGINT,	SIGNAL_INTERRUPT },
-  { SIGQUIT,	SIGNAL_INTERRUPT },
-  { SIGILL,	SIGNAL_FATAL },
-  { SIGABRT,	SIGNAL_FATAL },
-  { SIGFPE,	SIGNAL_FATAL },
-  { SIGSEGV,	SIGNAL_FATAL },
-  { SIGPIPE,	SIGNAL_IGNORE },
-  { SIGTERM,	SIGNAL_INTERRUPT },
-  { SIGUSR1,	SIGNAL_IGNORE },
-  { SIGUSR2,	SIGNAL_IGNORE },
-  { SIGBUS,	SIGNAL_FATAL },
-  { SIGTTOU,	SIGNAL_IGNORE },
+  { SIGHUP,	signal_rule::SIGNAL_INTERRUPT },
+  { SIGINT,	signal_rule::SIGNAL_INTERRUPT },
+  { SIGQUIT,	signal_rule::SIGNAL_INTERRUPT },
+  { SIGILL,	signal_rule::SIGNAL_FATAL },
+  { SIGABRT,	signal_rule::SIGNAL_FATAL },
+  { SIGFPE,	signal_rule::SIGNAL_FATAL },
+  { SIGSEGV,	signal_rule::SIGNAL_FATAL },
+  { SIGPIPE,	signal_rule::SIGNAL_IGNORE },
+  { SIGTERM,	signal_rule::SIGNAL_INTERRUPT },
+  { SIGUSR1,	signal_rule::SIGNAL_IGNORE },
+  { SIGUSR2,	signal_rule::SIGNAL_IGNORE },
+  { SIGBUS,	signal_rule::SIGNAL_FATAL },
+  { SIGTTOU,	signal_rule::SIGNAL_IGNORE },
 };
 
 static void
@@ -472,13 +475,13 @@ setup_signals(void)
       const struct signal_rule *sr = &signal_rules[i];
       switch (sr->action)
 	{
-	case SIGNAL_IGNORE:
+	case signal_rule::SIGNAL_IGNORE:
 	  signal(sr->signum, SIG_IGN);
 	  break;
-	case SIGNAL_INTERRUPT:
+	case signal_rule::SIGNAL_INTERRUPT:
 	  sigaction(sr->signum, &sa_int, NULL);
 	  break;
-	case SIGNAL_FATAL:
+	case signal_rule::SIGNAL_FATAL:
 	  sigaction(sr->signum, &sa_fatal, NULL);
 	  break;
 	default:
@@ -730,7 +733,9 @@ setup_net(void)
   if (fd < 0)
     die("Cannot create PF_INET socket: %m");
 
-  struct ifreq ifr = { .ifr_name = "lo" };
+  // struct ifreq ifr = { .ifr_name = "lo" };
+  struct ifreq ifr;
+  strcpy(ifr.ifr_name, "lo");
   if (ioctl(fd, SIOCGIFFLAGS, &ifr) < 0)
     die("SIOCGIFFLAGS on 'lo' failed: %m");
 
@@ -855,7 +860,8 @@ setup_orig_credentials(void)
 static int
 box_proxy(void *arg)
 {
-  char **args = arg;
+  // char **args = arg;
+  char **args = static_cast<char**>(arg);
 
   write_errors_to_fd = error_pipes[1];
   close(error_pipes[0]);
@@ -1071,12 +1077,31 @@ run(char **argv)
   box_keeper();
 }
 
+void run_container(const char *image) {
+  // search image 
+  std::vector<std::string> layer_paths;
+  int res = lookup_image(image, layer_paths);
+
+  // if image is not exists, fetch image from remote
+  if (res) {
+    int find_res = fetch_image(image, layer_paths);
+    if (find_res) {
+      die("Cannot fetch image %s", image);
+    }
+  }
+  // mount rootfs
+  
+  // create sandbox
+
+  // run container 
+
+  // cleanup
+}
+
 static void
 show_version(void)
 {
   printf("The process isolator " VERSION "\n");
-  printf("(c) 2012--" YEAR " Martin Mares and Bernard Blackham\n");
-  printf("Built on " BUILD_DATE " from Git commit " BUILD_COMMIT "\n");
 }
 
 /*** Options ***/
@@ -1151,6 +1176,7 @@ Commands:\n\
 }
 
 enum opt_code {
+  OPT_NONE = 0, // Adding OPT_NONE to represent the default state
   OPT_INIT = 256,
   OPT_RUN,
   OPT_CLEANUP,
@@ -1167,6 +1193,7 @@ enum opt_code {
   OPT_AS_UID,
   OPT_AS_GID,
   OPT_PRINT_CG_ROOT,
+  OPT_RUN_CONTAINER,
 };
 
 static const char short_opts[] = "b:c:d:DeE:f:i:k:m:M:n:o:p::q:r:st:vw:x:";
@@ -1209,6 +1236,7 @@ static const struct option long_opts[] = {
   { "version",		0, NULL, OPT_VERSION },
   { "wait",		0, NULL, OPT_WAIT },
   { "wall-time",	1, NULL, 'w' },
+  { "run-container", 1, NULL, OPT_RUN_CONTAINER }, // for squash distribution
   { NULL,		0, NULL, 0 }
 };
 
@@ -1232,7 +1260,9 @@ main(int argc, char **argv)
   int c;
   int require_cg = 0;
   char *sep;
-  enum opt_code mode = 0;
+  // enum opt_code mode = 0;
+  enum opt_code mode = static_cast<enum opt_code>(0);
+
 
   init_dir_rules();
 
@@ -1322,8 +1352,12 @@ main(int argc, char **argv)
       case OPT_CLEANUP:
       case OPT_VERSION:
       case OPT_PRINT_CG_ROOT:
-	if (!mode || (int) mode == c)
-	  mode = c;
+      case OPT_RUN_CONTAINER:
+	if (!mode || (int) mode == c){
+    // mode = c;
+    mode = static_cast<enum opt_code>(c);
+  }
+	  
 	else
 	  usage("Only one command is allowed.\n");
 	break;
@@ -1402,6 +1436,12 @@ main(int argc, char **argv)
       break;
     case OPT_PRINT_CG_ROOT:
       printf("%s\n", cf_cg_root);
+      break;
+    case OPT_RUN_CONTAINER:
+      if (optind < argc)
+        usage("--run-container mode requires a image to run\n");
+      //TODO: fix run_container args and make it readabble
+      run_container(argv[optind - 1]);
       break;
     default:
       die("Internal error: mode mismatch");

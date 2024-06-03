@@ -15,7 +15,7 @@
 #include <systemd/sd-daemon.h>
 
 void NONRET __attribute__((format(printf,1,2)))
-die(char *msg, ...)
+die(const char *msg, ...)
 {
   va_list args;
   va_start(args, msg);

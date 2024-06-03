@@ -1,10 +1,3 @@
-/*
- *	Process Isolator
- *
- *	(c) 2012-2023 Martin Mares <mj@ucw.cz>
- *	(c) 2012-2014 Bernard Blackham <bernard@blackham.com.au>
- */
-
 #include <stdarg.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -16,9 +9,9 @@
 
 /* isolate.c */
 
-void die(char *msg, ...) NONRET;
+void die(const char *msg, ...) NONRET;
 void NONRET __attribute__((format(printf,1,2))) err(char *msg, ...);
-void __attribute__((format(printf,1,2))) msg(char *msg, ...);
+void __attribute__((format(printf,1,2))) msg(const char *msg, ...);
 
 extern int pass_environ;
 extern int verbose;

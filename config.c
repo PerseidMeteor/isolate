@@ -25,7 +25,7 @@ static int line_number;
 static struct cf_per_box *per_box_configs;
 
 static void NONRET
-cf_err(char *msg)
+cf_err(const char *msg)
 {
   die("Error in config file, line %d: %s", line_number, msg);
 }
@@ -157,7 +157,7 @@ cf_per_box(int box_id)
     if (c->box_id == box_id)
       return c;
 
-  c = xmalloc(sizeof(*c));
+  c = static_cast<struct cf_per_box*>(xmalloc(sizeof(*c)));
   memset(c, 0, sizeof(*c));
   c->next = per_box_configs;
   per_box_configs = c;
